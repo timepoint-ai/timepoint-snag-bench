@@ -1,68 +1,110 @@
-# SNAG Bench v1.0
+# SNAG Bench
 
-**Open-source temporal reasoning benchmark for LLMs.**
+**Temporal reasoning benchmark for LLMs.** 60 adversarial tasks, 5 scoring axes, 3 difficulty tiers. Designed to stay hard through 2030.
 
-SNAG Bench scores models across 4 axes using 60 fixed tasks at 3 difficulty tiers. Results are saved as JSONL for reproducibility and aggregated into a public leaderboard.
+Most benchmarks test what models know. SNAG Bench tests whether they understand **when** — can a model distinguish a baptism date from a birth date, reject an anachronistic premise, or acknowledge when sources genuinely conflict? It measures **Causal Resolution**: how much of a temporal scenario has been rendered (Coverage) and how reliably (Convergence).
 
-SNAG-Bench measures **Causal Resolution** — how much of a scenario has been rendered (Coverage) and how reliably (Convergence) — across Rendered Past (grounding fidelity) and Rendered Future (temporal coherence, predictive precision). Scores feed the planned **Timepoint Futures Index (TFI)**.
+> **Why this exists:** Frontier models score ~1.0 on well-documented temporal queries. That tells us nothing. SNAG Bench's adversarial Tier 3 — sparse records, conflicting sources, embedded errors, temporal impossibilities — drops even the best models to 0.55–0.75. That spread is where evaluation becomes useful.
 
-Part of the [Timepoint AI](https://github.com/timepoint-ai) stack.
+Part of the [Timepoint AI](https://github.com/timepoint-ai) open-source stack.
+
+---
 
 ## Scoring Axes
 
-| Axis | Metric | Weight | Source | Status |
-|------|--------|--------|--------|--------|
-| 1. Grounding Fidelity | GSR | 20% | Flash API grounding confidence | Active |
-| 2. Temporal Coherence | TCS | 25% | Pro/Daedalus dialog quality + mechanism coverage | Active |
-| 3. Predictive Precision | WMNED | 20% | Proteus prediction markets | Stubbed |
-| 4. Human Judgment | HTP | 17% | LLM-as-human roleplayer panel (3 personas, 4 dimensions) | Active |
-| 5. Graph Coverage Quality | GCQ | 18% | Path completeness, convergence stability, anchor fidelity, temporal consistency, counterfactual diversity | Stub (`snag_bench/axes/coverage.py`) |
+Five axes, each measuring a different temporal capability. Scores are weighted and combined into a composite.
 
-**Composite:** `0.20×GSR + 0.25×TCS + 0.20×(1-WMNED) + 0.17×HTP + 0.18×GCQ` (renormalized over available axes)
+```
+                                           Weight
+  TCS   ▓▓▓▓▓▓▓▓▓▓▓▓▓░░░░░░░░░░░░░░░░░░  25%   Temporal Coherence
+  GSR   ▓▓▓▓▓▓▓▓▓▓░░░░░░░░░░░░░░░░░░░░░░  20%   Grounding Fidelity
+  WMNED ▓▓▓▓▓▓▓▓▓▓░░░░░░░░░░░░░░░░░░░░░░  20%   Predictive Precision
+  GCQ   ▓▓▓▓▓▓▓▓▓░░░░░░░░░░░░░░░░░░░░░░░  18%   Graph Coverage
+  HTP   ▓▓▓▓▓▓▓▓░░░░░░░░░░░░░░░░░░░░░░░░  17%   Human Judgment
+```
 
-Recent: Axis 5 Graph Coverage Quality (GCQ) stub in `snag_bench/axes/coverage.py`. Updated calibration config.
+| # | Axis | What it measures | Source | Status |
+|---|------|-----------------|--------|--------|
+| 1 | **GSR** | Do temporal claims survive fact-checking? | Flash API grounding | Active |
+| 2 | **TCS** | Can the model maintain coherent timelines in simulation? | Pro/Daedalus engine | Active |
+| 3 | **WMNED** | Do temporal forecasts match actual outcomes? | Proteus prediction markets | Stubbed |
+| 4 | **HTP** | Would 5 domain experts find the scene plausible? | LLM-as-human panel | Active |
+| 5 | **GCQ** | How complete and consistent is the causal graph? | Path/anchor analysis | Stubbed |
+
+Composite = weighted sum, renormalized over available axes. Missing axes don't penalize.
+
+---
+
+## Evaluation Architecture
+
+Each benchmark run fans out across all axes simultaneously:
+
+```
+                 ┌── Flash API ────── GSR   grounding confidence
+                 ├── Pro Engine ───── TCS   dialog quality + voice + mechanisms
+  60 tasks ──────┼── Proteus ──────── WMNED future outcome accuracy
+                 ├── 5 LLM Judges ── HTP   penalty-scored plausibility
+                 └── Graph Walker ─── GCQ   path completeness + convergence
+                                      │
+                                  Composite
+```
+
+Axes degrade gracefully — if a service isn't available, its axis is skipped and weights renormalize over what remains.
+
+---
 
 ## Task Set
 
-60 fixed tasks across 3 difficulty tiers (frozen per version):
+60 fixed tasks across 3 tiers. **Tier 3 is half the score.**
 
-| Tier | Count | Weight | Examples |
-|------|-------|--------|---------|
-| Easy | 20 | 1.0x (20%) | Apollo 11, Berlin Wall, D-Day |
-| Medium | 20 | 1.5x (30%) | Treaty of Westphalia, Krakatoa, Tunguska |
-| Hard | 20 | 2.5x (50%) | Antikythera mechanism, Library of Alexandria, Voynich manuscript |
-
-Tier 3 dominates scoring — a model acing Tier 1 but scoring 0.4 on Tier 3 gets a weighted GSR of ~0.58, not 0.80.
-
-See [methodology.md](methodology.md) for calibration targets and design rationale.
-
-## Quick Start (Local)
-
-```bash
-# 1. Clone and install
-git clone https://github.com/timepoint-ai/timepoint-snag-bench.git
-cd timepoint-snag-bench
-python3.11 -m venv .venv && source .venv/bin/activate
-pip install -e .
-
-# 2. Run full benchmark (requires Flash API on localhost:8000)
-snag-bench run --models gemini-2.0-flash --full
-
-# 3. Run specific tiers only
-snag-bench run --models gemini-2.0-flash --tiers 1,2
-
-# 4. Skip Axis 2 (saves ~45 min, no Pro needed)
-snag-bench run --models gemini-2.0-flash --full --skip-axis2
-
-# 5. Generate leaderboard from existing results
-snag-bench leaderboard --output results/LEADERBOARD.md --json-output results/leaderboard.json
+```
+            Tasks   Score Weight
+  Easy       20    ██░░░░░░░░  20%    Well-documented events
+  Medium     20    ███░░░░░░░  30%    Moderate ambiguity
+  Hard       20    █████░░░░░  50%    Adversarial temporal traps
 ```
 
-## CLI Reference
+A model scoring 1.0 on all Easy tasks but 0.4 on Hard gets a weighted score of **~0.58**, not 0.80.
+
+### What makes Tier 3 hard
+
+Adversarial tasks exploit specific failure modes:
+
+- **Sparse documentation** — queries about periods with no surviving records, forcing models to fabricate or admit uncertainty
+- **Conflicting sources** — Plutarch says one thing, Cassius Dio another, Strabo a third. There is no correct answer to pick
+- **Embedded anachronisms** — queries that describe European crop rotation in pre-contact Mesoamerica. Models must reject the premise
+- **Temporal impossibility** — conflating events separated by decades (Hypatia and the Serapeum, 24 years apart)
+- **Precision traps** — dates confidently cited everywhere that are technically wrong (Shakespeare's "birthday" is his baptism date)
+
+> **Longevity target:** Top model composite ≤0.95 through 2030. Tasks are retired and replaced when 3+ frontier models score >0.95 GSR. See [methodology.md](methodology.md) for the annual recalibration plan.
+
+---
+
+## Quick Start
+
+```bash
+git clone https://github.com/timepoint-ai/timepoint-snag-bench.git
+cd timepoint-snag-bench
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e .
+
+# Full benchmark (requires Flash API on localhost:8000)
+snag-bench run --models gemini-2.0-flash --full
+
+# Specific tiers only
+snag-bench run --models gemini-2.0-flash --tiers 1,2
+
+# Skip Axis 2 (no Pro engine needed)
+snag-bench run --models gemini-2.0-flash --full --skip-axis2
+
+# Generate leaderboard from existing results
+snag-bench leaderboard --output results/LEADERBOARD.md
+```
+
+<details>
+<summary><strong>CLI Reference</strong></summary>
 
 ### `snag-bench run`
-
-Main command for v1.0 benchmark runs.
 
 | Option | Description |
 |--------|-------------|
@@ -77,8 +119,6 @@ Main command for v1.0 benchmark runs.
 
 ### `snag-bench leaderboard`
 
-Generate leaderboard from existing JSONL results.
-
 | Option | Description |
 |--------|-------------|
 | `--output` | Write markdown leaderboard to file |
@@ -87,26 +127,25 @@ Generate leaderboard from existing JSONL results.
 
 ### `snag-bench evaluate` (legacy)
 
-Single-model evaluation from v0.1. Use `run` for v1.0.
+Single-model evaluation from v0.1. Use `run` instead.
 
-## Environment Variables
+</details>
+
+<details>
+<summary><strong>Environment Variables</strong></summary>
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `FLASH_URL` | `http://localhost:8000` | Flash API base URL |
-| `PRO_REPO_PATH` | `~/Documents/GitHub/timepoint-pro` | Path to Pro repo (for Axis 2) |
+| `PRO_REPO_PATH` | `~/Documents/GitHub/timepoint-pro` | Path to Pro repo (Axis 2 subprocess) |
+| `PRO_URL` | — | Pro Cloud API base URL (Axis 2 cloud path, preferred) |
+| `PRO_API_KEY` | — | Pro Cloud API key (format: `tp_cloud_...`) |
 | `OPENROUTER_API_KEY` | — | Required for Axis 4 (HTP) LLM judging |
 
-## Requirements
+</details>
 
-- Python 3.10+
-- Flash API running (for Axis 1 GSR) — see [timepoint-flash](https://github.com/timepoint-ai/timepoint-flash)
-- Optional: Pro repo locally checked out (for Axis 2 TCS) — see [timepoint-pro](https://github.com/timepoint-ai/timepoint-pro)
-- Optional: `OPENROUTER_API_KEY` for Axis 4 HTP
-
-Axes degrade gracefully — if Flash isn't running, Axis 1 is skipped. If Pro isn't found, Axis 2 is skipped. If no API key, Axis 4 is skipped.
-
-## Result Format
+<details>
+<summary><strong>Result Format</strong></summary>
 
 Each evaluation appends JSONL to `results/`:
 
@@ -119,68 +158,71 @@ Each evaluation appends JSONL to `results/`:
   "task_id": "t1_001",
   "tier": 1,
   "timestamp": "2026-02-19T17:30:00",
-  "version": "1.0.0",
-  "evidence": {"preset": "balanced", "query": "Apollo 11 Moon landing July 20 1969", "scene_id": "..."},
+  "version": "1.1.0",
+  "evidence": {"preset": "balanced", "query": "Apollo 11 Moon landing July 20 1969"},
   "run_hash": "a1b2c3..."
 }
 ```
 
-## Project Structure
+</details>
+
+<details>
+<summary><strong>Project Structure</strong></summary>
 
 ```
 timepoint-snag-bench/
 ├── snag_bench/
-│   ├── cli.py              # Click CLI (snag-bench run/evaluate/leaderboard)
-│   ├── evaluator.py         # SNAGEvaluator — 4-axis orchestrator
-│   ├── schema.py            # EvalResult + Axis Pydantic models
-│   ├── calibration.py       # Difficulty-weighted scoring, composite formula
-│   ├── leaderboard.py       # Leaderboard generation (MD + JSON)
+│   ├── cli.py              # Click CLI
+│   ├── evaluator.py         # 5-axis orchestrator
+│   ├── schema.py            # EvalResult + Axis models
+│   ├── calibration.py       # Difficulty-weighted scoring
+│   ├── leaderboard.py       # Leaderboard generation
 │   └── axes/
-│       ├── human.py         # Axis 4 — LLM-as-human HTP rater
-│       └── predictive.py    # Axis 3 — WMNED stub
+│       ├── human.py         # Axis 4 — 5-rater HTP
+│       ├── predictive.py    # Axis 3 — WMNED stub
+│       └── coverage.py      # Axis 5 — GCQ stub
 ├── tasks/
-│   ├── version.json         # Task set metadata and calibration targets
+│   ├── version.json         # Task set metadata
 │   ├── tier1_easy.json      # 20 easy tasks
 │   ├── tier2_medium.json    # 20 medium tasks
-│   └── tier3_hard.json      # 20 hard/adversarial tasks
-├── results/                 # JSONL result files + leaderboard
-├── methodology.md           # Scoring methodology and calibration
-├── run.sh                   # Shell runner with env detection
+│   └── tier3_hard.json      # 20 adversarial tasks
+├── results/                 # JSONL results + leaderboard
+├── methodology.md           # Scoring methodology
 └── pyproject.toml
 ```
 
-## Hosted Runner (Internal)
+</details>
 
-For Timepoint AI internal use, a hosted version runs on Railway via [`snag-bench-runner`](https://github.com/timepoint-ai/snag-bench-runner). It provides a REST API for triggering and monitoring long benchmark runs without needing a local setup. See that repo's README for API docs.
-
-### Data Format
-
-All benchmark results are expressible as TDF records. Planned: `tfi-report` CLI command for generating Timepoint Futures Index reports from benchmark data.
+---
 
 ## Leaderboard
 
-See [results/LEADERBOARD.md](results/LEADERBOARD.md) for current standings.
+See [results/LEADERBOARD.md](results/LEADERBOARD.md) for current standings. External models only — Timepoint internal runs are excluded.
 
-External models only — Timepoint internal engine runs are excluded from the public leaderboard.
+---
 
 ## Timepoint Suite
 
-Open-source engines for temporal AI. Render the past. Simulate the future. Score the predictions. Accumulate the graph.
+Open-source engines for temporal AI. Render the past. Simulate the future. Score the predictions.
 
-| Service | Type | Repo | Role |
-|---------|------|------|------|
-| **Flash** | Open Source | timepoint-flash | Reality Writer — renders grounded historical moments (Synthetic Time Travel) |
-| **Pro** | Open Source | timepoint-pro | Rendering Engine — SNAG-powered simulation, TDF output, training data |
-| **Clockchain** | Open Source | timepoint-clockchain | Temporal Causal Graph — Rendered Past + Rendered Future, growing 24/7 |
-| **SNAG Bench** | **Open Source** | **timepoint-snag-bench** | **Quality Certifier — measures Causal Resolution across renderings** |
-| **Proteus** | Open Source | proteus | Settlement Layer — prediction markets that validate Rendered Futures |
-| **TDF** | Open Source | timepoint-tdf | Data Format — JSON-LD interchange across all services |
-| **Web App** | Private | timepoint-web-app | Browser client at app.timepointai.com |
-| **iPhone App** | Private | timepoint-iphone-app | iOS client — Synthetic Time Travel on mobile |
-| **Billing** | Private | timepoint-billing | Payment processing — Apple IAP + Stripe |
-| **Landing** | Private | timepoint-landing | Marketing site at timepointai.com |
+```
+  Flash ─── scene generation, grounding ──────────┐
+  Pro ───── SNAG simulation, temporal coherence ───┤
+  Proteus ─ prediction markets, settlement ────────┼── SNAG Bench
+  Clockchain ─ causal graph accumulation ──────────┤    (scores it all)
+  TDF ───── data interchange format ───────────────┘
+```
 
-**The Timepoint Thesis** — a forthcoming paper formalizing the Rendered Past / Rendered Future framework, the mathematics of Causal Resolution, the TDF specification, and the Proof of Causal Convergence protocol. Follow [@seanmcdonaldxyz](https://x.com/seanmcdonaldxyz) for updates.
+| Engine | Role |
+|--------|------|
+| [Flash](https://github.com/timepoint-ai/timepoint-flash) | Reality Writer — renders grounded historical moments |
+| [Pro](https://github.com/timepoint-ai/timepoint-pro) | Rendering Engine — SNAG-powered simulation, TDF output |
+| [Clockchain](https://github.com/timepoint-ai/timepoint-clockchain) | Temporal Causal Graph — Rendered Past + Rendered Future |
+| **SNAG Bench** | **Quality Certifier — measures Causal Resolution** |
+| [Proteus](https://github.com/timepoint-ai/proteus) | Settlement Layer — prediction markets for Rendered Futures |
+| [TDF](https://github.com/timepoint-ai/timepoint-tdf) | Data Format — JSON-LD interchange across services |
+
+**The Timepoint Thesis** — a forthcoming paper formalizing Rendered Past / Rendered Future, the mathematics of Causal Resolution, and the Proof of Causal Convergence protocol. Follow [@seanmcdonaldxyz](https://x.com/seanmcdonaldxyz) for updates.
 
 ## License
 
