@@ -26,7 +26,7 @@ Five axes, each measuring a different temporal capability. Scores are weighted a
 | # | Axis | What it measures | Source | Status |
 |---|------|-----------------|--------|--------|
 | 1 | **GSR** | Do temporal claims survive fact-checking? | Flash API grounding | Active |
-| 2 | **TCS** | Can the model maintain coherent timelines in simulation? | Pro/Daedalus engine | Active |
+| 2 | **TCS** | Can the model maintain coherent timelines in simulation? | Simulation engine | Active |
 | 3 | **WMNED** | Do temporal forecasts match actual outcomes? | Proteus prediction markets | Stubbed |
 | 4 | **HTP** | Would 5 domain experts find the scene plausible? | LLM-as-human panel | Active |
 | 5 | **GCQ** | How complete and consistent is the causal graph? | Path/anchor analysis | Stubbed |
@@ -41,7 +41,7 @@ Each benchmark run fans out across all axes simultaneously:
 
 ```
                  ┌── Flash API ────── GSR   grounding confidence
-                 ├── Pro Engine ───── TCS   dialog quality + voice + mechanisms
+                 ├── Simulation ───── TCS   dialog quality + voice + mechanisms
   60 tasks ──────┼── Proteus ──────── WMNED future outcome accuracy
                  ├── 5 LLM Judges ── HTP   penalty-scored plausibility
                  └── Graph Walker ─── GCQ   path completeness + convergence
@@ -94,7 +94,7 @@ snag-bench run --models gemini-2.0-flash --full
 # Specific tiers only
 snag-bench run --models gemini-2.0-flash --tiers 1,2
 
-# Skip Axis 2 (no Pro engine needed)
+# Skip Axis 2 (no simulation engine needed)
 snag-bench run --models gemini-2.0-flash --full --skip-axis2
 
 # Generate leaderboard from existing results
@@ -113,8 +113,8 @@ snag-bench leaderboard --output results/LEADERBOARD.md
 | `--tiers` | Comma-separated tier filter (e.g. `1,2`) |
 | `--preset` | Flash preset (default: `balanced`) |
 | `--text-model` | Override Flash LLM |
-| `--pro-model` | Override Pro LLM |
-| `--skip-axis2` | Skip Axis 2 / TCS (no Pro needed) |
+| `--pro-model` | Override simulation engine LLM |
+| `--skip-axis2` | Skip Axis 2 / TCS (no simulation engine needed) |
 | `--leaderboard/--no-leaderboard` | Auto-generate leaderboard after run (default: on) |
 
 ### `snag-bench leaderboard`
@@ -137,9 +137,6 @@ Single-model evaluation from v0.1. Use `run` instead.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `FLASH_URL` | `http://localhost:8000` | Flash API base URL |
-| `PRO_REPO_PATH` | `~/Documents/GitHub/timepoint-pro` | Path to Pro repo (Axis 2 subprocess) |
-| `PRO_URL` | — | Pro Cloud API base URL (Axis 2 cloud path, preferred) |
-| `PRO_API_KEY` | — | Pro Cloud API key (format: `tp_cloud_...`) |
 | `OPENROUTER_API_KEY` | — | Required for Axis 4 (HTP) LLM judging |
 
 </details>
@@ -207,7 +204,6 @@ Open-source engines for temporal AI. Render the past. Simulate the future. Score
 
 ```
   Flash ─── scene generation, grounding ──────────┐
-  Pro ───── SNAG simulation, temporal coherence ───┤
   Proteus ─ prediction markets, settlement ────────┼── SNAG Bench
   Clockchain ─ causal graph accumulation ──────────┤    (scores it all)
   TDF ───── data interchange format ───────────────┘
@@ -216,7 +212,6 @@ Open-source engines for temporal AI. Render the past. Simulate the future. Score
 | Engine | Role |
 |--------|------|
 | [Flash](https://github.com/timepoint-ai/timepoint-flash) | Reality Writer — renders grounded historical moments |
-| [Pro](https://github.com/timepoint-ai/timepoint-pro) | Rendering Engine — SNAG-powered simulation, TDF output |
 | [Clockchain](https://github.com/timepoint-ai/timepoint-clockchain) | Temporal Causal Graph — Rendered Past + Rendered Future |
 | **SNAG Bench** | **Quality Certifier — measures Causal Resolution** |
 | [Proteus](https://github.com/timepoint-ai/proteus) | Settlement Layer — prediction markets for Rendered Futures |

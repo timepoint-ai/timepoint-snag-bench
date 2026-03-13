@@ -9,7 +9,7 @@ from typing import List, Optional
 import httpx
 from dotenv import dotenv_values
 from rich.console import Console
-from timepoint_tdf import TDFRecord
+from timepoint_tdf import TDFRecord, from_flash
 
 from .schema import eval_record, Axis
 from .calibration import load_tasks_by_tier, difficulty_weighted_score
@@ -34,7 +34,34 @@ def _flash_headers() -> dict:
     return headers
 
 
-# Progress signals from Pro that indicate the run is alive and working
+def _flash_api_to_tdf(api_response: dict) -> TDFRecord:
+    """Map a Flash /generate/sync API response to a TDFRecord via from_flash().
+
+    The Flash API returns user-facing field names (title, narrative, grounding)
+    while from_flash() expects internal model names (scene_data, grounding_data).
+    This function bridges the two.
+    """
+    mapped = {
+        "id": api_response.get("id", "unknown"),
+        "created_at": api_response.get(
+            "created_at", datetime.utcnow().isoformat()
+        ),
+        "query": api_response.get("query"),
+        "grounding_data": api_response.get("grounding"),
+        "scene_data": {
+            "title": api_response.get("title"),
+            "narrative": api_response.get("narrative"),
+            "description": api_response.get("description"),
+        },
+        "character_data": {"entities": api_response.get("entities")},
+        "dialog": api_response.get("dialog"),
+        "moment_data": {"timepoints": api_response.get("timepoints")},
+        "metadata": api_response.get("metadata"),
+    }
+    return from_flash(mapped)
+
+
+# Progress signals from simulation engine that indicate the run is alive and working
 PROGRESS_SIGNALS = [
     "Dialog quality",
     "Voice distinctiveness",
@@ -68,7 +95,7 @@ class SNAGEvaluator:
         self.training_dir = Path("training_data")
         self.training_dir.mkdir(exist_ok=True)
 
-    # ── Adaptive Pro runner ──────────────────────────────────────────
+    # ── Adaptive simulation runner ──────────────────────────────────
 
     def _run_pro_adaptive(
         self,
@@ -78,7 +105,7 @@ class SNAGEvaluator:
         stale_timeout: int = 300,
         max_timeout: int = 60000,
     ) -> subprocess.CompletedProcess:
-        """Run Pro subprocess with adaptive timeout based on output activity."""
+        """Run simulation subprocess with adaptive timeout based on output activity."""
         proc = subprocess.Popen(
             cmd,
             cwd=cwd,
@@ -103,7 +130,7 @@ class SNAGEvaluator:
                     line_count += 1
                 stripped = line.strip()
                 if stripped and any(sig in stripped for sig in PROGRESS_SIGNALS):
-                    console.print(f"  [dim]Pro: {stripped[:120]}[/]")
+                    console.print(f"  [dim]Sim: {stripped[:120]}[/]")
 
         def _read_stderr():
             nonlocal last_activity
@@ -129,14 +156,14 @@ class SNAGEvaluator:
                 lines_so_far = line_count
 
             if elapsed > max_timeout:
-                console.print(f"[red]Pro hit absolute max timeout ({max_timeout}s)[/]")
+                console.print(f"[red]Simulation hit absolute max timeout ({max_timeout}s)[/]")
                 proc.kill()
                 proc.wait(timeout=10)
                 break
 
             if idle > stale_timeout:
                 console.print(
-                    f"[yellow]Pro stale — no output for {idle:.0f}s, killing[/]"
+                    f"[yellow]Simulation stale — no output for {idle:.0f}s, killing[/]"
                 )
                 proc.kill()
                 proc.wait(timeout=10)
@@ -144,7 +171,7 @@ class SNAGEvaluator:
 
             if now - last_status > status_interval:
                 console.print(
-                    f"  [dim]... Pro running {elapsed:.0f}s, {lines_so_far} lines, last output {idle:.0f}s ago[/]"
+                    f"  [dim]... Simulation running {elapsed:.0f}s, {lines_so_far} lines, last output {idle:.0f}s ago[/]"
                 )
                 last_status = now
 
@@ -163,7 +190,7 @@ class SNAGEvaluator:
     # ── TCS parser ───────────────────────────────────────────────────
 
     def _parse_tcs(self, stdout: str) -> tuple[float, dict]:
-        """Parse Pro stdout for coherence signals."""
+        """Parse simulation stdout for coherence signals."""
         import re
 
         evidence = {}
@@ -263,7 +290,10 @@ class SNAGEvaluator:
                 )
                 resp.raise_for_status()
                 data = resp.json()
-                gsr = data.get("grounding", {}).get("grounding_confidence", 0.0)
+                flash_tdf = _flash_api_to_tdf(data)
+                gsr = (flash_tdf.payload.get("grounding_data") or {}).get(
+                    "grounding_confidence", 0.0
+                )
 
                 result = eval_record(
                     model=model,
@@ -275,19 +305,9 @@ class SNAGEvaluator:
                     evidence={
                         "preset": preset,
                         "query": query,
-                        "scene_id": data.get("id"),
-                        "flash_data": {
-                            k: data.get(k)
-                            for k in [
-                                "title",
-                                "narrative",
-                                "description",
-                                "entities",
-                                "timepoints",
-                                "grounding",
-                            ]
-                            if data.get(k) is not None
-                        },
+                        "scene_id": flash_tdf.id,
+                        "flash_tdf_hash": flash_tdf.tdf_hash,
+                        "flash_payload": flash_tdf.payload,
                     },
                 )
                 results.append(result)
@@ -306,17 +326,17 @@ class SNAGEvaluator:
 
         return results
 
-    # ── Axis 2: Pro coherence (per-model) ────────────────────────────
+    # ── Axis 2: Simulation coherence (per-model) ───────────────────
 
     def _run_axis2_cloud(
         self,
         model: str,
         out_file: Path = None,
     ) -> List[TDFRecord]:
-        """Run Pro via Cloud API for TCS score."""
+        """Run simulation via Cloud API for TCS score."""
         results = []
         template = "showcase/mars_mission_portal"
-        console.print(f"[cyan]Axis 2 (TCS): Running Pro Cloud API ({template})...[/]")
+        console.print(f"[cyan]Axis 2 (TCS): Running Simulation Cloud API ({template})...[/]")
 
         try:
             headers = {
@@ -340,7 +360,7 @@ class SNAGEvaluator:
             create_resp.raise_for_status()
             job = create_resp.json()
             job_id = job["id"]
-            console.print(f"  [dim]Pro Cloud job created: {job_id}[/]")
+            console.print(f"  [dim]Simulation Cloud job created: {job_id}[/]")
 
             # Poll until completed/failed (max 1 hour)
             max_polls = 120  # 120 * 30s = 1 hour
@@ -356,18 +376,18 @@ class SNAGEvaluator:
 
                 if poll_num % 4 == 0:  # Log every 2 minutes
                     console.print(
-                        f"  [dim]Pro Cloud: {status} (poll {poll_num + 1})...[/]"
+                        f"  [dim]Simulation Cloud: {status} (poll {poll_num + 1})...[/]"
                     )
 
                 if status == "completed":
                     break
                 elif status == "failed":
                     error_msg = poll_resp.json().get("error", "unknown error")
-                    console.print(f"[red]Pro Cloud job failed: {error_msg}[/]")
+                    console.print(f"[red]Simulation Cloud job failed: {error_msg}[/]")
                     return results
             else:
                 console.print(
-                    f"[red]Pro Cloud job timed out after {max_polls * 30}s[/]"
+                    f"[red]Simulation Cloud job timed out after {max_polls * 30}s[/]"
                 )
                 return results
 
@@ -399,12 +419,12 @@ class SNAGEvaluator:
             console.print(f"[green]Axis 2 TCS (cloud): {tcs:.3f}[/]")
 
         except Exception as e:
-            console.print(f"[red]Pro Cloud failed: {e}[/]")
+            console.print(f"[red]Simulation Cloud failed: {e}[/]")
 
         return results
 
     def _parse_tcs_cloud(self, result_json: dict) -> tuple[float, dict]:
-        """Parse TCS from Pro Cloud API result_json."""
+        """Parse TCS from Simulation Cloud API result_json."""
         evidence = {}
 
         # Cloud results may contain structured data directly
@@ -477,10 +497,10 @@ class SNAGEvaluator:
         pro_model: str = None,
         out_file: Path = None,
     ) -> List[TDFRecord]:
-        """Run Pro template for TCS score.
+        """Run simulation template for TCS score.
 
-        Prefers Pro Cloud API (PRO_URL + PRO_API_KEY) if configured.
-        Falls back to local subprocess if Pro repo is available.
+        Prefers Cloud API (PRO_URL + PRO_API_KEY) if configured.
+        Falls back to local subprocess if simulation engine is available.
         """
         # Try cloud API first
         if PRO_URL and PRO_API_KEY:
@@ -490,19 +510,19 @@ class SNAGEvaluator:
         pro_path = Path(
             os.environ.get(
                 "PRO_REPO_PATH",
-                "~/Documents/GitHub/timepoint-pro",
+                "~/Documents/GitHub/timepoint-simulation",
             )
         ).expanduser()
 
         if not pro_path.is_dir():
             console.print(
-                f"[yellow]timepoint-pro not found at {pro_path} and no PRO_URL configured — skipping Axis 2[/]"
+                f"[yellow]Simulation engine not found at {pro_path} and no PRO_URL configured — skipping Axis 2[/]"
             )
             return results
 
         template = "mars_mission_portal"
         console.print(
-            f"[cyan]Axis 2 (TCS): Running Pro {template} (adaptive timeout)...[/]"
+            f"[cyan]Axis 2 (TCS): Running Simulation {template} (adaptive timeout)...[/]"
         )
 
         try:
@@ -535,7 +555,7 @@ class SNAGEvaluator:
 
             if run_result.returncode != 0:
                 console.print(
-                    f"[yellow]Pro exited with code {run_result.returncode}[/]"
+                    f"[yellow]Simulation exited with code {run_result.returncode}[/]"
                 )
 
             if has_quality_data:
@@ -553,9 +573,9 @@ class SNAGEvaluator:
                         f.write(result.model_dump_json() + "\n")
                 console.print(f"[green]Axis 2 TCS: {tcs:.3f}[/]")
             else:
-                console.print("[red]Pro failed with no usable quality data[/]")
+                console.print("[red]Simulation failed with no usable quality data[/]")
         except Exception as e:
-            console.print(f"[red]Pro failed: {e}[/]")
+            console.print(f"[red]Simulation failed: {e}[/]")
 
         return results
 
@@ -611,8 +631,8 @@ class SNAGEvaluator:
 
         api_key = os.environ.get("OPENROUTER_API_KEY", "")
         if not api_key:
-            # Try loading from Pro .env
-            pro_env_path = Path("~/Documents/GitHub/timepoint-pro/.env").expanduser()
+            # Try loading from simulation .env
+            pro_env_path = Path("~/Documents/GitHub/timepoint-simulation/.env").expanduser()
             if pro_env_path.is_file():
                 for k, v in dotenv_values(pro_env_path).items():
                     if k == "OPENROUTER_API_KEY" and v:
@@ -628,8 +648,8 @@ class SNAGEvaluator:
         for r in axis1_results:
             r_task_id = r.payload.get("task_id")
             r_evidence = r.payload.get("evidence", {})
-            if r_task_id and r_evidence.get("flash_data"):
-                flash_data_by_task[r_task_id] = r_evidence["flash_data"]
+            if r_task_id and r_evidence.get("flash_payload"):
+                flash_data_by_task[r_task_id] = r_evidence["flash_payload"]
 
         console.print(
             f"[cyan]Axis 4 (HTP): Rating {len(tasks)} tasks with 5 LLM raters (penalty scoring)...[/]"
@@ -724,7 +744,7 @@ class SNAGEvaluator:
             )
             all_results.extend(a1_results)
 
-            # Axis 2: Pro coherence (per-model)
+            # Axis 2: Simulation coherence (per-model)
             if not skip_axis2:
                 a2_results = self._run_axis2(
                     model, pro_model=pro_model, out_file=out_file

@@ -1,5 +1,5 @@
 [bandit]
-# B404: import subprocess — we need this for Pro runner
+# B404: import subprocess — we need this for simulation runner
 # B603: subprocess without shell=True — this is the SAFE pattern
 skips: B404,B603
 exclude_dirs: tests,.venv,build,dist
