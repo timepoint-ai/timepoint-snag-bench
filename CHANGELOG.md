@@ -14,8 +14,8 @@ Major upgrade: 60-task benchmark with difficulty-weighted scoring and 4 axes.
 - **`snag-bench leaderboard` command** — Generates Markdown + JSON leaderboards
 - **Leaderboard generator** (`snag_bench/leaderboard.py`) — External-model-only, difficulty-weighted, JSON + Markdown output
 - **methodology.md** — Calibration targets (2026–2030), 8 known limitations, scoring formulas
-- **Adaptive Pro timeout** (`_run_pro_adaptive()`) — Popen + threading, stale detection, heartbeat logging
-- **Resilient scoring** — Parse TCS from stdout even on non-zero Pro exit code
+- **Adaptive simulation timeout** (`_run_pro_adaptive()`) — Popen + threading, stale detection, heartbeat logging
+- **Resilient scoring** — Parse TCS from stdout even on non-zero simulation exit code
 - **Configurable Flash URL** — `FLASH_URL` env var (defaults to localhost:8000)
 - **SAST baseline** — `.bandit` + `.semgrepignore` configs, 0 findings
 
@@ -40,7 +40,7 @@ First working version. Axis 1 and Axis 2 produce real eval results.
 
 - EvalResult schema with Pydantic, JSONL serialization, sha256 run hash
 - CLI: `snag-bench evaluate --model MODEL --full-stack`
-- SNAGEvaluator with Axis 1 (Flash GSR) and Axis 2 (Pro TCS)
+- SNAGEvaluator with Axis 1 (Flash GSR) and Axis 2 (TCS)
 - run.sh with env detection, credential borrowing, Flash server management
 - BACKGROUND.md analyzing upstream repos
 

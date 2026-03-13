@@ -5,7 +5,7 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 FLASH_DIR="$SCRIPT_DIR/../timepoint-flash"
-DAEDALUS_DIR="$SCRIPT_DIR/../timepoint-pro"
+DAEDALUS_DIR="$SCRIPT_DIR/../timepoint-simulation"
 FLASH_PORT=8000
 FLASH_PID=""
 
@@ -42,7 +42,7 @@ usage() {
     echo "  --model MODEL        Model name (default: gemini-2.0-flash)"
     echo "  --preset PRESET      Flash preset (default: balanced)"
     echo "  --text-model MODEL   Override Flash LLM"
-    echo "  --pro-model MODEL    Override Pro LLM"
+    echo "  --pro-model MODEL    Override simulation LLM"
     echo "  --full-stack         Run all axes"
     echo "  --dry-run            Print plan without executing"
     echo ""
@@ -98,16 +98,16 @@ check_env() {
 
     # 4. Daedalus repo
     if [ -d "$DAEDALUS_DIR" ]; then
-        echo -e "  timepoint-pro ${GREEN}found${NC}  $DAEDALUS_DIR"
+        echo -e "  simulation engine ${GREEN}found${NC}  $DAEDALUS_DIR"
     else
-        echo -e "  timepoint-pro ${YELLOW}missing${NC}  (Axis 2 will be skipped)"
+        echo -e "  simulation engine ${YELLOW}missing${NC}  (Axis 2 will be skipped)"
     fi
 
     # 5. Daedalus .env
     if [ -f "$DAEDALUS_DIR/.env" ]; then
-        echo -e "  daedalus .env  ${GREEN}found${NC}  $DAEDALUS_DIR/.env"
+        echo -e "  simulation .env ${GREEN}found${NC}  $DAEDALUS_DIR/.env"
     else
-        echo -e "  daedalus .env  ${YELLOW}missing${NC}"
+        echo -e "  simulation .env ${YELLOW}missing${NC}"
     fi
 
     # 6. Flash server already running?
@@ -144,7 +144,7 @@ load_flash_env() {
         set +a
     fi
 
-    # Also load Daedalus .env if it exists (for OPENROUTER_API_KEY etc.)
+    # Also load simulation .env if it exists (for OPENROUTER_API_KEY etc.)
     if [ -f "$DAEDALUS_DIR/.env" ]; then
         echo -e "${CYAN}Loading credentials from $DAEDALUS_DIR/.env${NC}"
         set -a

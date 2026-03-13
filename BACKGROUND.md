@@ -6,7 +6,7 @@ Reference document for the three upstream repos that SNAG Bench scores against, 
 
 ---
 
-## 1. Timepoint Pro (SNAG Engine)
+## 1. Simulation Engine (SNAG Engine)
 
 The Social Network Augmented Generation engine. Generates multi-agent social simulations with structured causal provenance from natural language prompts or JSON templates.
 
@@ -19,15 +19,10 @@ The Social Network Augmented Generation engine. Generates multi-agent social sim
 
 ### SNAG Bench Role (Axis 2: TCS)
 
-Runs the `mars_mission_portal` template through Pro's adaptive timeout runner. Measures:
+Runs the `mars_mission_portal` template through the adaptive timeout runner. Measures:
 - Dialog quality (50%): naturalness and contextual appropriateness
 - Voice distinctiveness (30%): character voice maintenance
 - Mechanism coverage (20%): how many of 19 mechanisms activate
-
-### Deployment
-
-- **Open source**: `timepoint-ai/timepoint-pro` (CLI, local execution)
-- **Cloud**: `timepoint-ai/timepoint-pro-cloud-private` (FastAPI + Celery + Redis + Postgres on Railway)
 
 ---
 
@@ -89,8 +84,8 @@ SNAG Bench (this repo)
 ├── Axis 1: GSR ──→ Flash API /generate/sync
 │                    (via FLASH_URL, default localhost:8000)
 │
-├── Axis 2: TCS ──→ Pro subprocess (mars_mission_portal)
-│                    (via PRO_REPO_PATH, adaptive timeout)
+├── Axis 2: TCS ──→ Simulation engine (mars_mission_portal)
+│                    (adaptive timeout)
 │
 ├── Axis 3: WMNED → Stub (future: Proteus on-chain markets)
 │

@@ -22,9 +22,9 @@ def main():
 @click.option("--tiers", default=None, help="Comma-separated tiers to run (e.g. 1,2,3)")
 @click.option("--preset", default="balanced", help="Flash preset")
 @click.option("--text-model", default=None, help="Override Flash LLM")
-@click.option("--pro-model", default=None, help="Override Pro LLM")
+@click.option("--pro-model", default=None, help="Override simulation engine LLM")
 @click.option(
-    "--skip-axis2", is_flag=True, help="Skip Axis 2 (Pro/TCS) — saves ~45 min per model"
+    "--skip-axis2", is_flag=True, help="Skip Axis 2 (TCS) — saves ~45 min per model"
 )
 @click.option(
     "--leaderboard/--no-leaderboard",
@@ -80,7 +80,7 @@ def run(
     "--text-model", default=None, help="Override Flash LLM (text_model in payload)"
 )
 @click.option(
-    "--pro-model", default=None, help="Override Pro LLM (--model flag to Pro)"
+    "--pro-model", default=None, help="Override simulation engine LLM"
 )
 def evaluate(
     model: str,
